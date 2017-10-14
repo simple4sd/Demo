@@ -1,3 +1,3 @@
 
 all:
-	gcc -o infector infector.c -Wall -DDEBUG
+	gcc -o infector infector.c -Wall -DDEBUG -g
