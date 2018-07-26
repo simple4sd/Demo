@@ -2,14 +2,19 @@
 #include <stdlib.h>
 #include <unistd.h>
 #include <string.h>
+#include <limits.h>
 #include <sys/stat.h>
 #include <sys/types.h>
 #include <dirent.h>
+#include <errno.h>
 
 #include "libproc.h"
 
 #define MAX_PATH_LEN 1024
+#define MAX_LINE_LEN 1024
 #define INIT_SIZE    16
+
+extern int errno;
 
 typedef struct list_head {
     unsigned long *head;
@@ -118,4 +123,75 @@ RAW_SOCK get_raw_sock_info(unsigned long sock_inode)
 
     fclose(fp);
     return rs;
+}
+
+char *parse_from_file(const char *file_path,
+                      const char *item, const char *format)
+{
+    if (file_path == NULL || item == NULL || format == NULL)
+        return NULL;
+
+    FILE *fp = fopen(file_path, "r");
+    if (fp == NULL)
+        return NULL;
+
+    char *match_str = NULL;
+    do {
+        char line[MAX_LINE_LEN] = {0};
+        char buf[MAX_LINE_LEN] = {0};
+        if (fgets(line, sizeof(line), fp) == NULL)
+            break;
+        if (strncmp(line, item, strlen(item)) != 0)
+            continue;
+        sscanf(line, format, buf);
+        match_str = strdup(buf);
+        break;
+    } while (1);
+
+    return match_str;
+}
+
+
+char *parse_from_status(pid_t pid, char *item)
+{
+    if (item == NULL)
+        return NULL;
+
+    char status_path[MAX_PATH_LEN] = {0};
+    sprintf(status_path, "/proc/%d/status", pid);
+    return parse_from_file(status_path, item,"%*s%s");
+}
+
+char *get_real_path(char *file_path)
+{
+    if (file_path == NULL)
+        return NULL;
+
+    char real_path[PATH_MAX + 1] = {0};
+    (void)realpath(file_path, real_path);
+    if (errno == 0 || errno == ENOENT)
+        return strdup(real_path);
+}
+
+char *get_proc_name(pid_t pid)
+{
+    return parse_from_status(pid, "Name:");
+}
+
+pid_t get_proc_ppid(pid_t pid)
+{
+    char *ppid_str = parse_from_status(pid, "PPid:");
+    if (ppid_str == NULL)
+        return 0;
+    pid_t ppid = atoi(ppid_str);
+    free(ppid_str);
+    ppid_str = NULL;
+    return ppid;
+}
+
+char *get_proc_exe(pid_t pid)
+{
+    char exe_path[MAX_PATH_LEN] = {0};
+    sprintf(exe_path, "/proc/%d/exe", pid);
+    return get_real_path(exe_path);
 }

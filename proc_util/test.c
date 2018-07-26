@@ -14,6 +14,18 @@ int main(int argc, char *argv[])
     sscanf(argv[1], "%d", &pid);
     printf("pid = %d\n", pid);
 
+    char *name = get_proc_name(pid);
+    if (name != NULL) {
+        printf("[%d] %s\n", pid, name);
+        free(name);
+    }
+    char *exe = get_proc_exe(pid);
+    if (exe != NULL) {
+        printf("[%d] %s\n", pid, exe);
+        free(exe);
+    }
+    printf("[%d] ppid %d\n", pid, get_proc_ppid(pid));
+
     unsigned long *inodes_ptr = get_sock_inodes(pid);
     if (inodes_ptr == NULL)
         return -1;
