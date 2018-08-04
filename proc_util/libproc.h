@@ -15,4 +15,7 @@ RAW_SOCK get_raw_sock_info(unsigned long inode);
 char *get_proc_name(pid_t pid);
 char *get_proc_exe(pid_t pid);
 pid_t get_proc_ppid(pid_t pid);
+char *get_proc_cmdline(pid_t pid);
+char **get_proc_cmdline_list(pid_t pid);
+
 #endif

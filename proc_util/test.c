@@ -41,5 +41,19 @@ int main(int argc, char *argv[])
     }
 
     free(inodes_ptr);
+
+    char **str_arr = get_proc_cmdline_list(pid);
+
+    printf("cmdline list is :\n");
+    while (str_arr != NULL && *str_arr != NULL) {
+        printf("%s\n", *str_arr++);
+    }
+
+    printf("cmdline content is :\n");
+    char *cmdline = get_proc_cmdline(pid);
+    if (cmdline != NULL) {
+        printf("%s\n", cmdline);
+    }
+
     return 0;
 }
