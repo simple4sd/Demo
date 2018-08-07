@@ -184,10 +184,6 @@ unsigned long *get_sock_inodes(pid_t pid)
 RAW_SOCK get_raw_sock_info(unsigned long sock_inode)
 {
     RAW_SOCK rs;
-    unsigned long rx_queue = 0;
-    unsigned long inode = 0;
-    unsigned long drops = 0;
-
     memset(&rs, 0, sizeof(rs));
 
     FILE *fp = fopen("/proc/net/raw", "rb");
@@ -204,18 +200,50 @@ RAW_SOCK get_raw_sock_info(unsigned long sock_inode)
             continue;
         }
 
-        sscanf(buf, "%*s%*s%*s%*s%*[^:]:%lx%*s%*s%*s%*s%lu%*s%*s%lu", &rx_queue, &inode, &drops);
-        if (inode == sock_inode) {
-            rs.rx_queue = rx_queue;
-            rs.inode = inode;
-            rs.drops = drops;
+        sscanf(buf, "%*s%*s%*s%*s%*[^:]:%lx%*s%*s%*s%*s%lu%*s%*s%lu",
+               &(rs.rx_queue), &(rs.inode), &(rs.drops));
+        if (rs.inode == sock_inode)
             break;
-        }
+        memset(&rs, 0, sizeof(rs));
     } while (1);
 
     fclose(fp);
     return rs;
 }
+
+TCP_SOCK get_tcp_sock_info(unsigned long sock_inode)
+{
+    TCP_SOCK ts;
+    memset(&ts, 0, sizeof(ts));
+
+    FILE *fp = fopen("/proc/net/tcp", "r");
+    if (fp == NULL)
+        return ts;
+
+    int read_head = 0;
+
+    do {
+        char buf[MAX_PATH_LEN] = {0};
+        if (fgets(buf, sizeof(buf), fp) == NULL)
+            break;
+        if (!read_head) {
+            read_head = 1;
+            continue;
+        }
+
+        sscanf(buf, "%*s%lx:%x%lx:%x%x%*s%*s%*s%*s%*s%lu",
+               &(ts.local_ip), &(ts.local_port),
+               &(ts.remote_ip), &(ts.remote_port),
+               &(ts.state), &(ts.inode));
+        if (ts.inode == sock_inode)
+            break;
+        memset(&ts, 0, sizeof(ts));
+    } while (1);
+
+    fclose(fp);
+    return ts;
+}
+
 
 char **read_proc_file_to_list(const char *file_path)
 {

@@ -1,4 +1,4 @@
-#include <stdio.h>
+	#include <stdio.h>
 #include <stdlib.h>
 
 #include "libproc.h"
@@ -37,6 +37,17 @@ int main(int argc, char *argv[])
             printf("inode %lu rx_queue %lu drops %lu\n",
                    rs.inode, rs.rx_queue, rs.drops);
             break;
+        }
+    }
+
+    i = 0;
+    while (inodes_ptr[i] != 0) {
+        TCP_SOCK ts = get_tcp_sock_info(inodes_ptr[i++]);
+        if (ts.inode != 0) {
+            printf("get sock inode:%lu %lx:%x %lx:%x \n",
+                   ts.inode, ts.local_ip, ts.local_port,
+                   ts.remote_ip, ts.remote_port);
+            continue;
         }
     }
 
