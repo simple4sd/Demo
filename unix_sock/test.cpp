@@ -6,6 +6,10 @@
 #include <stddef.h>
 #include <sys/stat.h>
 #include <ctype.h>
+#include <poll.h>
+#include <errno.h>
+
+#include <string>
 
 #define CLI_PATH  "audit_client"
 
@@ -74,9 +78,55 @@ void display_au_header(struct audisp_header *ah)
     return;
 }
 
+void handle_data_stream(char c)
+{
+    static int is_dispather_header = 0;
+    static int header_len = 0;
+    static struct audisp_header au_head;
+    static int sum = 0;
+    static std::string log;
+
+    static int msg_len = 0;
+    unsigned char *p = (unsigned char *)&au_head;
+    if (is_dispather_header) {
+        p[header_len++] = c;
+        if (header_len != sizeof(struct audisp_header)) {
+            return;
+        } else {
+            header_len = 0;
+            is_dispather_header = 0;
+            printf("msg_type %d:", au_head.type);
+            //display_au_header(&au_head);
+            msg_len = au_head.size;
+        }
+    }
+    if (!isprint(c) && c != '\n')
+        return;
+    if (sum++ < msg_len) {
+        log.push_back(c);
+        //printf("%c", c);
+    }
+
+    if (c == '\n') {
+        //printf("\n");
+        printf("%s\n", log.c_str());
+        log.clear();
+        sum = 0;
+        msg_len = 0;
+        is_dispather_header = 1;
+        memset(&au_head, 0, sizeof(struct audisp_header));
+    }
+}
+
+void write_to_file(char *buf , int len)
+{
+    FILE *fp = fopen("audit.log", "a+");
+    fwrite(buf, 1, len, fp);
+    fflush(fp);
+    fclose(fp);
+}
 
 // every message is seperated by the newline '\n'
-
 int main(int argc, char *argv[])
 {
     int fd = -1;
@@ -86,42 +136,32 @@ int main(int argc, char *argv[])
         return 1;
     }
 
-    int is_dispather_header = 1;
-    int header_len = 0;
-    struct audisp_header au_head;
-    int sum = 0;
+    nfds_t nfds = 1;
+    int timeout = 2000;
+    struct pollfd fds;
+    memset(&fds, 0, sizeof(fds));
+    fds.fd = fd;
+    fds.events = POLLIN;
 
-    int msg_len = 0;
     while (1) {
-        char buf[2] = {0};
-        int len = recv(fd, buf, sizeof(buf)-1, 0);
-        char c = buf[0];
-        unsigned char *p = (unsigned char *)&au_head;
-        if (is_dispather_header) {
-            // printf("%x", c);
-            p[header_len++] = c;
-            if (header_len != sizeof(struct audisp_header)) {
-                continue;
-            } else {
-                // printf("\n");
-                header_len = 0;
-                is_dispather_header = 0;
-                display_au_header(&au_head);
-                msg_len = au_head.size;
-            }
+        int n = poll(&fds, nfds, timeout);
+        if (n == -1) {
+            printf("poll error. errno %d", errno);
         }
-        if (!isprint(c) && c != '\n')
+        if (n == 0) {
             continue;
-        if (sum++ < msg_len) {
-            printf("%c", c);
         }
 
-        if (c == '\n') {
-            printf("\n");
-            sum = 0;
-            msg_len = 0;
-            is_dispather_header = 1;
-            memset(&au_head, 0, sizeof(struct audisp_header));
+        char buf[2048] = {0};
+        int len = 0;
+        while (len = recv(fd, buf, sizeof(buf)-1, MSG_DONTWAIT)) {
+            if (len < 0)
+                break;
+            //write_to_file(buf, len);
+            int i = 0;
+            for ( ; i < len; ++i) {
+                handle_data_stream(buf[i]);
+            }
         }
     }
 }
