@@ -10,6 +10,7 @@
 #include <errno.h>
 
 #include <string>
+#include <vector>
 
 #define CLI_PATH  "audit_client"
 
@@ -80,41 +81,47 @@ void display_au_header(struct audisp_header *ah)
 
 void handle_data_stream(char c)
 {
-    static int is_dispather_header = 0;
+    static bool msg_enable = false;
     static int header_len = 0;
     static struct audisp_header au_head;
     static int sum = 0;
     static std::string log;
 
+    static std::vector<unsigned char> c_vec;
+
     static int msg_len = 0;
     unsigned char *p = (unsigned char *)&au_head;
-    if (is_dispather_header) {
-        p[header_len++] = c;
-        if (header_len != sizeof(struct audisp_header)) {
+    if (!msg_enable) {
+        if (c_vec.size() == sizeof(struct audisp_header)) {
+            c_vec.erase(c_vec.begin());
+        }
+
+        c_vec.push_back(c);
+        if (c_vec.size() != sizeof(struct audisp_header)) {
             return;
         } else {
-            header_len = 0;
-            is_dispather_header = 0;
-            printf("msg_type %d:", au_head.type);
-            //display_au_header(&au_head);
-            msg_len = au_head.size;
+            for (size_t i = 0; i < c_vec.size(); ++i) {
+                p[i] = c_vec[i];
+            }
+            if (au_head.hlen == sizeof(au_head)) {
+                msg_enable = true;
+                //display_au_header(&au_head);
+                msg_len = au_head.size;
+                c_vec.clear();
+                printf("msg_type %d:", au_head.type);
+            }
         }
-    }
-    if (!isprint(c) && c != '\n')
-        return;
-    if (sum++ < msg_len) {
-        log.push_back(c);
-        //printf("%c", c);
-    }
-
-    if (c == '\n') {
-        //printf("\n");
-        printf("%s\n", log.c_str());
-        log.clear();
-        sum = 0;
-        msg_len = 0;
-        is_dispather_header = 1;
-        memset(&au_head, 0, sizeof(struct audisp_header));
+    } else {
+        if (sum++ < msg_len) {
+            log.push_back(c);
+        } else {
+            //printf("read data ok!\n");
+            printf("%s\n", log.c_str());
+            log.clear();
+            sum = 0;
+            msg_len = 0;
+            msg_enable = false;
+        }
     }
 }
 
