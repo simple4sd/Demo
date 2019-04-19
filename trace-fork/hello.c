@@ -36,33 +36,37 @@ void create_thread()
 }
 void do_child_thing()
 {
-	// create child every two seconds	
-	while (1) {
+//	while (1) {
+		DEBUG("fork again! %d\n", getpid());
 		pid_t pid = fork();
-		sleep(5);
+		sleep(1);
 		if (pid > 0) {
 			// parent go to endless sleep
 			// while(1) sleep(1);
+
 			// parent exit 
 			exit(0);
 		} else if (pid == 0) {
 			DEBUG("create new process: %d\n", getpid());
-			sleep(5);
 			create_thread();
-			exit(0);
 		} else {
 			ERROR("fork failed\n");
 			return;
 		}
-	}
-	return;
+               
+		DEBUG("sleep process: %ld\n", syscall(SYS_gettid));
+		sleep(10);
+//	}
+//	return;
 }
 
 int main (int argc, char **argv)
 {
+    DEBUG("new proc %d: begin fork\n", getpid());
     pid_t pid = fork();
     if (pid == 0)
     	do_child_thing();
+    DEBUG("new proc %d: exit\n", getpid());
     return 0;
 }
 
